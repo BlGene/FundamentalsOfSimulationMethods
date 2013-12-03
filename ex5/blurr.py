@@ -2,7 +2,7 @@ mport scipy.signal
 import numpy as np
 import matplotlib.pyplot as plt
 
-im = plt.imread('example.jpg')
+im = plt.imread('flights.png')
 im /= 255.   # normalise to 0-1, it's easier to work in float space
 
 # make some kind of kernel, there are many ways to do this...
