@@ -1,9 +1,9 @@
-mport scipy.signal
+import scipy.signal
 import numpy as np
 import matplotlib.pyplot as plt
 
 im = plt.imread('flights.png')
-im /= 255.   # normalise to 0-1, it's easier to work in float space
+#im /= 255.   # normalise to 0-1, it's easier to work in float space
 
 # make some kind of kernel, there are many ways to do this...
 t = 1 - np.abs(np.linspace(-1, 1, 21))

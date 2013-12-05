@@ -1,140 +1,166 @@
-import matplotlib
-import pylab as plot
+from time import sleep
 
-#definition of constants
-k_b = 1.38*10**-16
-Lamda_0 = 10**-22 
-T_0 = 20000
-alpha = 10.0
-beta = -0.5
-n_H = 1.0
-dt = 10**10
-T_init = 10**7
-T_end = 6000
-eps_0 = 10.
+import math
+import numpy as np
+import matplotlib.pyplot as plt
 
-#evaluate dT/dt as function of T
-def func(T):
-	rT = T / T_0
-	if rT <= 1:
-		Lamda = Lamda_0 * rT ** alpha
-	else:
-		Lamda = Lamda_0 * rT ** beta
-	return -2./(3 * k_b ) * n_H * Lamda
+# define physical parameters
+T0 = 20000
+l0 = 10**-22
+alpha = 10
+beta = -0.5  
+nH = 1
+kb = 1.38 * 10**-16
 
-#one step of the 2nd order RK-scheme
-def step(T,dt):
-	k_1 = func(T)
-	k_2 = func(T + k_1*dt)
-	return T + 0.5*(k_1 + k_2)*dt
-	
-#executing the RK-scheme with a fixed timestep, returning lists with the Temeperatures and corresponding times
-def rk_fixed(dt):
-	T = T_init
-	t = 0
-	# lists to save the results of the temperature and the corresponding time
-	T_res = []
-	t_res = []
-	T_res.append(T)
-	t_res.append(t)
-	while T > T_end:
-		T = step(T,dt)
-		t += dt
-		T_res.append(T)
-		t_res.append(t)
-	return T_res, t_res
+# function lambda
+def lmbd(T):
+  if T <= T0:
+    return l0 * (T/T0) ** alpha
+  else: 
+    return l0 * (T/T0) ** beta
 
-#executing the RK-scheme with an adaptive timestep
-def rk_adapt(dt_init):
-	T = T_init
-	t = 0
-	dt = dt_init
-	# list to save the results of the temperature and the corresponding time
-	T_res = []
-	t_res = []
-	T_res.append(T)
-	t_res.append(t)
-	while T > T_end:
-		T_a = step(T,dt)
-		T_aux = step(T,dt/2.)
-		T_b = step(T_aux,dt/2.)
-		eps = abs(T_a - T_b)
-		if eps > eps_0:
-			while(eps > eps_0):
-				dt /= 2.
-				T_a = step(T,dt)
-				T_aux = step(T,dt/2.)
-				T_b = step(T_aux,dt/2.)
-				eps = abs(T_a - T_b)
-			T = T_b
-			T_res.append(T)
-			t += dt
-			t_res.append(t)
-		elif eps*(2**3) > eps_0:
-			dt *= 2.
-			T = T_b
-			T_res.append(T)
-			t += dt
-			t_res.append(t)
-		elif eps < eps_0:
-			T = T_b
-			T_res.append(T)
-			t += dt
-			t_res.append(t)
-	
-	return T_res,t_res
+# temporal differential of the temperature.
+def function(T,t):
+  return -2/(3 * kb) * nH * lmbd(T)
+
+# runge kutta integrater of 2nd order. 
+def rk(h,f,y,t):
+  k1=f(y,T)
+  k2=f(y+h*k1,t+h)
+  return y + h/2*k1 + h/2*k2
+
+# define a simulation class
+class Simulation(object):
+  def __init__(self, h, TInit, TStopp, maxErr):
+    self.h=h
+    self.t = 0.0 # time passed since the beginning.
+    self.T=TInit
+    self.TNew = 0.0
+    self.THalve = 0.0
+    self.err = 0.0 # estimated error of current step
+    self.maxErr = maxErr # maximum allowed error per step
+    self.i = 0 # number of time steps passed. 
+    self.TStopp = TStopp
+    
+    # changing the size of the temperature array frequently is slowly.
+    # therefore use a cache array. 
+    self.cache = np.array(np.zeros(100)) # cash array.
+    self.temp = np.array(()) # storage for the temperature developement.
+    self.logTemp = np.array(()) # log of temperature.
+
+    # same thing for the time
+    self.tCache = np.array(np.zeros(100)) # cash for time array 
+    self.timeArray = np.array(()) # storage for the time developement.
+    
+  def simulate(self):
+    while self.T > self.TStopp:
+
+      while True:
+        # simulate with two h: one step with h and two steps with h/2
+        self.TNew = rk(self.h,function,self.T,self.t) # simulation with normal stepsiz
+
+        self.THalve = rk(self.h/2,function,self.T,self.t) # simulation with small stepsize 
+        self.THalve = rk(self.h/2,function,self.THalve,self.t)
+
+        self.err = abs(self.TNew - self.THalve) # get an estimate for the error in the current step.
+
+        if self.err > self.maxErr:
+          self.h = self.h/2
+        elif 10 * self.err < self.maxErr:
+          self.h = self.h*2
+          break
+        else:
+          break
+
+      self.T = self.THalve
+      self.t += self.h
+
+      # write simulation data in cache array.
+      self.cache[self.i%100] = self.T
+      self.tCache[self.i%100] = self.t
+
+      # write the cache into the target array every 100 timesteps.
+      if self.i%100 == 99:
+        self.temp = np.append(self.temp, self.cache)
+        self.timeArray = np.append(self.timeArray, self.tCache)
+
+      self.i += 1
 
 
-# RK-scheme second order with fixed timestep dt = 10**10 
-# Plot with Logarithmic t axis and linear T axis
-def part_a():
-	dt = 10**10
-	T_res,t_res = rk_fixed(dt)
-	fig1 = plot.figure()
-	ax1 = fig1.add_subplot(111)
-	plot.plot(t_res,T_res)
-	handles, labels = ax1.get_legend_handles_labels()
-	ax1.legend(handles, labels)
-	ax1.set_xscale('log')
-	ax1.set_xlabel('time 10**10sec')
-	ax1.set_ylabel('Temp K')
-	plot.show()
+    self.temp = np.append(self.temp, self.cache[:self.i%100])
+    self.timeArray = np.append(self.timeArray, self.tCache[:self.i%100])
 
-# RK-scheme second order with fixed timestep for different timesteps dt
-def part_b():
-	j = 0
-	fig1 = plot.figure()
-	ax1 = fig1.add_subplot(111)
-	for i in (0.8,1.0,2.0,5.0,10.,15,20):
-		dt = i * 10**10
-		T_res,t_res = rk_fixed(dt)
-		
-		plot.plot(t_res,T_res,label=str(i))
-		handles, labels = ax1.get_legend_handles_labels()
-		ax1.legend(handles, labels)
-		ax1.set_xscale('log')
-		ax1.set_xlabel('time 10**10sec')
-		ax1.set_ylabel('Temp K')
-		
-		j += 1
-	plot.show()
+    self.logTemp = np.zeros(len(self.temp))
+    for j in range(len(self.logTemp)):
+      if (self.temp[j] < 0.01):
+        self.temp[j] = 0.01
+      self.logTemp[j] = math.log(self.temp[j]) 
 
-def part_c():
-	j = 0
-	fig1 = plot.figure()
-	ax1 = fig1.add_subplot(111)
-	for i in (0.8,1.0,10,20.,30.0,100,1000):
-		dt = i * 10**10
-		T_res,t_res = rk_adapt(dt)
-		print len(T_res),len(t_res)	
-		plot.plot(t_res,T_res,label=str(i))
-		handles, labels = ax1.get_legend_handles_labels()
-		ax1.legend(handles, labels)
-		ax1.set_xscale('log')
-		ax1.set_xlabel('time 10**10sec')
-		ax1.set_ylabel('Temp K')
-		
-		j += 1
-	plot.show()
-	
-part_c()
+  def simulateFixedStep(self):
+    while self.T > self.TStopp:
+      self.t += self.h
+      self.T = rk(self.h,function,self.T,self.t)
+
+      # write simulation data in cache array.
+      self.cache[self.i%100] = self.T
+      self.tCache[self.i%100] = self.t
+
+      # write the cache into the target array every 100 timesteps.
+      if self.i%100 == 99:
+        self.temp = np.append(self.temp, self.cache)
+        self.timeArray = np.append(self.timeArray, self.tCache)
+
+      self.i += 1
+
+
+    self.temp = np.append(self.temp, self.cache[:self.i%100])
+    self.timeArray = np.append(self.timeArray, self.tCache[:self.i%100])
+
+    self.logTemp = np.zeros(len(self.temp))
+    for j in range(len(self.logTemp)):
+      if (self.temp[j] < 0.01):
+        self.temp[j] = 0.01
+      self.logTemp[j] = math.log(self.temp[j]) 
+
+  def printResult(self):
+    print "time passed: " + str(self.t)
+    print "number of timesteps: " + str(self.i)
+
+  def exportResult(self):
+    return (self.logTemp, self.timeArray)
+
+# parameters of the simulation
+TStopp = 6000
+h = 10. ** 10
+TInit = 10.0 ** 7
+T = TInit
+t = 0.0
+errMax = 10.0
+errMaxSmall = 0.1
+
+plt.subplot(111)
+
+simVar = Simulation(h*10**4,TInit,TStopp,errMax)
+simVar.simulate()
+simVar.printResult()
+(TVar,tVar) = simVar.exportResult()
+plotVar = plt.plot(tVar,TVar, label = "Variable Stepsize\nerrMax = 10")
+
+simVarSmall = Simulation(h,TInit,TStopp,errMaxSmall)
+simVarSmall.simulate()
+simVarSmall.printResult()
+(TVarSmall,tVarSmall) = simVarSmall.exportResult()
+plotVarSmall = plt.plot(tVarSmall,TVarSmall, label = "Variable Stepsize\nerrMax = 0.1")
+
+
+simFixed = Simulation(h,TInit,TStopp,errMax)
+simFixed.simulateFixedStep()
+simFixed.printResult()
+(TFixed,tFixed) = simFixed.exportResult()
+plotFixed = plt.plot(tFixed,TFixed, label = "fixed Stepsize")
+
+plt.legend(loc=1, borderaxespad=0.) #legend(bbox_to_anchor=(0, 1.05, 1, 0.1), loc=3, borderaxespad=0.)
+
+plt.savefig("test.png")
+plt.show((plotVar,plotVarSmall,plotFixed))
+
